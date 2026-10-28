@@ -83,6 +83,15 @@ def create_app() -> Flask:
         ).fetchall()
         return jsonify([dict(r) for r in rows])
 
+    # DEMO ONLY - deliberately vulnerable route to prove the security gate blocks it.
+    # User input is concatenated straight into SQL (CWE-89), e.g. ?name=' OR '1'='1
+    @app.get("/items/lookup")
+    def lookup_item():
+        name = request.args.get("name", "")
+        query = "SELECT id, name, quantity FROM items WHERE name = '" + name + "'"
+        rows = get_db().execute(query).fetchall()
+        return jsonify([dict(r) for r in rows])
+
     @app.get("/items/<int:item_id>")
     def get_item(item_id: int):
         row = get_db().execute(
