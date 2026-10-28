@@ -37,7 +37,7 @@ This document explains each stage of `security-scan.yml`, why each tool was chos
 
 **Why `ignore-unfixed`?** Blocking on CVEs with no available fix only teaches people to bypass the gate. Unfixed CVEs still appear in the SARIF report and should be tracked as accepted risk.
 
-**Image hardening that keeps Trivy quiet:** a slim base, `apt-get upgrade` at build time, no compilers, a non-root `USER`, and pinned dependencies.
+**Image hardening that keeps Trivy quiet:** a minimal Alpine base, `apk upgrade` at build time, no compilers, a non-root `USER`, and pinned dependencies.
 
 ## Stage 3: Dependency check (SCA)
 
