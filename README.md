@@ -73,19 +73,39 @@ gh api -X PUT repos/Gav-debug8888/devsecops-cicd-security/branches/main/protecti
 {
   "required_status_checks": { "strict": true, "contexts": ["Security Gate"] },
   "enforce_admins": true,
-  "required_pull_request_reviews": { "required_approving_review_count": 1 },
+  "required_pull_request_reviews": { "required_approving_review_count": 0 },
   "restrictions": null
 }
 EOF
 ```
 
-## Example: a blocked PR
+## Proof: a real blocked PR
 
-[`docs/scan-results-example.md`](docs/scan-results-example.md) walks through a PR that adds a SQL-injectable search endpoint and an outdated base image:
+**[PR #1: Add /items/lookup endpoint with deliberate SQL injection](https://github.com/Gav-debug8888/devsecops-CICD-security/pull/1)** is a live demo, left open on purpose. It adds one route that builds SQL by string concatenation (CWE-89):
 
-- Semgrep flags `python.lang.security.audit.formatted-sql-query` (ERROR) → **job fails**
-- Trivy finds a HIGH-severity OpenSSL CVE in the image → **job fails**
-- `Security Gate` → ❌ **Merge blocked** until both are fixed
+```python
+query = "SELECT id, name, quantity FROM items WHERE name = '" + name + "'"
+rows = get_db().execute(query).fetchall()
+```
+
+What the pipeline did:
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ pass |
+| Trivy container scan | ✅ pass |
+| Dependency audit (pip-audit) | ✅ pass |
+| **Semgrep SAST** | ❌ `python.flask.security.injection.tainted-sql-string` (ERROR) |
+| **Security Gate** | ❌ fail |
+| **Merge** | 🔒 **Blocked** by the `protect-main` ruleset (required check, no bypass actors) |
+
+The fix is a parameterised query (`WHERE name = ?`), as the rest of `app.py` already uses.
+
+### The gate catching a real supply-chain issue
+
+When the pipeline first ran on `secure-task-api`, Trivy **blocked the build on 5 HIGH CVEs** (`msgpack`, `urllib3`, `setuptools`). They weren't in the app's dependencies: they were libraries bundled inside **pip itself** in the image. The root-cause fix was to remove pip from the runtime image, since it's only needed at build time. The Dockerfiles in both repos now do this.
+
+For a fuller walkthrough with sample scanner output, see [`docs/scan-results-example.md`](docs/scan-results-example.md).
 
 ## Run locally
 
