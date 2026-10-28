@@ -19,7 +19,7 @@ The PR makes two changes:
 ```
 ```diff
  # Dockerfile
--FROM python:3.12-slim
+-FROM python:3.12-alpine
 +FROM python:3.9-slim-bullseye
 ```
 
@@ -130,7 +130,7 @@ Note that the unit tests **passed**. The new endpoint worked for normal input. F
 ```
 ```diff
 -FROM python:3.9-slim-bullseye
-+FROM python:3.12-slim
++FROM python:3.12-alpine
 ```
 
 ## Re-run result
