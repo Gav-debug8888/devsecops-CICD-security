@@ -1,0 +1,45 @@
+# Standalone Semgrep SAST workflow using the Semgrep GitHub Action.
+# Note: returntocorp/semgrep-action is in maintenance mode. The main gate
+# (security-scan.yml) uses the official semgrep/semgrep container directly.
+name: Semgrep SAST
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, Monday 06:00 UTC: catches new rules on unchanged code
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        with:
+          config: >-
+            p/default
+            p/python
+            p/flask
+            p/owasp-top-ten
+            p/secrets
+          generateSarif: "1"
+        env:
+          # Optional: set SEMGREP_APP_TOKEN in repo secrets to send results to Semgrep Cloud.
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-action
