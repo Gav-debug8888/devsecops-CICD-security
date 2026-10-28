@@ -13,7 +13,9 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# pip is only needed at build time. Its vendored libraries (urllib3, msgpack,
+# pkg_resources) carry their own CVEs that Trivy flags, so remove it afterwards.
+RUN pip install -r requirements.txt && pip uninstall -y pip
 COPY --chown=app:app app.py .
 
 USER app
