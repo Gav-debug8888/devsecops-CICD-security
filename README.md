@@ -1,6 +1,6 @@
 # DevSecOps CI/CD Security Pipeline
 
-[![Security Gate](https://i.ytimg.com/vi/fzOPhVYJdZQ/maxresdefault.jpg)](https://github.com/Gav-debug8888/devsecops-cicd-security/actions/workflows/security-scan.yml)
+[![Security Gate](https://github.com/Gav-debug8888/devsecops-cicd-security/actions/workflows/security-scan.yml/badge.svg)](https://github.com/Gav-debug8888/devsecops-cicd-security/actions/workflows/security-scan.yml)
 [![Semgrep](https://img.shields.io/badge/SAST-Semgrep-1f8a70?logo=semgrep)](https://semgrep.dev)
 [![Trivy](https://img.shields.io/badge/Container%20Scan-Trivy-1904da?logo=aqua)](https://trivy.dev)
 [![pip-audit](https://img.shields.io/badge/SCA-pip--audit-3776ab?logo=python&logoColor=white)](https://github.com/pypa/pip-audit)
