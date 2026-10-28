@@ -1,20 +1,21 @@
-# Hardened image: slim base, non-root user, no build tools, healthcheck.
-FROM python:3.12-slim
+# Alpine: musl libc, no Debian packages, minimal CVE surface.
+# Flask + gunicorn ship pure-Python wheels; no compiler needed.
+FROM python:3.12-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     DB_PATH=/data/inventory.db
 
-RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system app && useradd --system --gid app --home /app app \
+# Apply any pending Alpine security patches, create non-root user and data dir.
+RUN apk upgrade --no-cache \
+    && addgroup -S app \
+    && adduser  -S -G app -H -D app \
     && mkdir -p /data && chown app:app /data
 
 WORKDIR /app
 COPY requirements.txt .
-# pip is only needed at build time. Its vendored libraries (urllib3, msgpack,
-# pkg_resources) carry their own CVEs that Trivy flags, so remove it afterwards.
+# pip is only needed at build time; remove it so Trivy doesn't flag its bundled libs.
 RUN pip install -r requirements.txt && pip uninstall -y pip
 COPY --chown=app:app app.py .
 
