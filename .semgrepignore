@@ -1,0 +1,8 @@
+# Paths Semgrep should not scan.
+# Tests use dummy tokens on purpose and would create noise for secret-detection rules.
+tests/
+docs/
+.venv/
+venv/
+__pycache__/
+*.md

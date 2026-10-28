@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      API_TOKEN: ${API_TOKEN:?Set API_TOKEN in your shell or .env file}
+    volumes:
+      - inventory-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  inventory-data:
