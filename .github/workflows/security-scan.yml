@@ -1,0 +1,152 @@
+# Main security gate. Mark the "Security Gate" check as REQUIRED in branch
+# protection (see README) so a PR cannot be merged unless every scan passes.
+name: Security Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: inventory-api:${{ github.sha }}
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q
+
+  semgrep-sast:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to the Security tab
+    container:
+      image: semgrep/semgrep:1.182.1   # pinned - bump deliberately
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # 1) Full report (all severities) for the GitHub Security tab. Never fails.
+      - name: Semgrep scan (SARIF report)
+        run: semgrep scan --config=auto --sarif --output=semgrep.sarif || true
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      # 2) Blocking gate: exits non-zero on any ERROR-severity (high/critical) finding.
+      - name: Semgrep gate (fail on high/critical)
+        run: semgrep scan --config=auto --severity=ERROR --error
+
+  trivy-container-scan:
+    name: Trivy container scan
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build image
+        run: docker build -t "$IMAGE_NAME" .
+
+      - name: Trivy scan (SARIF report)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.76.1   # pin the Trivy binary too
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      # Blocking gate: equivalent to `trivy image --exit-code 1 --severity HIGH,CRITICAL`
+      - name: Trivy gate (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.76.1   # pin the Trivy binary too
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  dependency-check:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+
+      # pip-audit fails on ANY known vulnerability in requirements.txt (stricter than
+      # high/critical, because the PyPI advisory feed does not always include a CVSS score).
+      - name: pip-audit (fail on known CVEs)
+        run: pip-audit --requirement requirements.txt --strict --desc on --format columns
+
+      # Second opinion with severity filtering: Trivy filesystem scan of the lockfile.
+      - name: Trivy dependency scan (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.76.1   # pin the Trivy binary too
+          scan-type: fs
+          scan-ref: requirements.txt
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    needs: [unit-tests, semgrep-sast, trivy-container-scan, dependency-check]
+    if: always()
+    continue-on-error: false
+    steps:
+      - name: Evaluate results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "## Security Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "$RESULTS" | jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' >> "$GITHUB_STEP_SUMMARY"
+          failed=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result != "success")] | length')
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Security gate FAILED - $failed job(s) did not pass. Merge blocked."
+            echo "**❌ Merge blocked**" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "**✅ All security checks passed**" >> "$GITHUB_STEP_SUMMARY"
