@@ -1,6 +1,6 @@
 # Alpine: musl libc, no Debian packages, minimal CVE surface.
 # Flask + gunicorn ship pure-Python wheels; no compiler needed.
-FROM python:3.12-alpine
+FROM python:3.15-alpine
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
